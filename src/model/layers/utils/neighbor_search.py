@@ -148,7 +148,7 @@ def _native_neighbor_search(
         radius = torch.tensor(radius, device=queries.device).view(1, 1)
 
     with torch.no_grad():
-        data.to(queries.device)
+        data = data.to(queries.device)
         dists = torch.cdist(queries, data).to(
             queries.device
         )  # shaped num query points x num data points
