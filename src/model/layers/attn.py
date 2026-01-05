@@ -3,8 +3,8 @@ This file contains the implementation of the attention module.
 
 Reference: https://github.com/meta-llama/llama3/blob/main/llama/model.py
 """
-import torch 
-import torch.nn as nn 
+import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 from dataclasses import dataclass, asdict, field
@@ -32,7 +32,7 @@ class TransformerConfig:
     use_ffn_norm: bool = True                        # Whether to use normalization in the feedforward network
     norm_eps: float = 1e-6                           # Epsilon value for layer normalization
     num_layers: int = 3                              # Number of transformer blocks
-    positional_embedding: str = 'absolute'           # Positional embedding type, supports ['absolute', 'rope']
+    positional_embedding: str = 'absolute'           # Positional embedding type, supports ['absolute', 'rope', 'continuous_rope', 'relative_bias', 'learnable']
     use_long_range_skip: bool = True                 # Set it to True for UViT processor
     ffn_multiplier: int = 4                          # FFN hidden size multiplier (ffn_hidden = hidden_size * ffn_multiplier)
     attn_config: AttentionConfig = field(default_factory=AttentionConfig)   # Configuration for the attention sub-module
@@ -41,9 +41,9 @@ class TransformerConfig:
 # Attention
 ############
 class GroupQueryFlashAttention(nn.Module):
-    def __init__(self, 
+    def __init__(self,
                  input_size: int,
-                 hidden_size: int,  
+                 hidden_size: int,
                  num_heads: int = 8,
                  num_kv_heads: int = 8,
                  use_conditional_norm: bool = False,
@@ -54,10 +54,10 @@ class GroupQueryFlashAttention(nn.Module):
         super().__init__()
         assert hidden_size % num_heads == 0, f"hidden_size {hidden_size} must be divisible by num_heads {num_heads}"
         assert num_heads % num_kv_heads == 0, f"num_heads {num_heads} must be divisible by num_kv_heads {num_kv_heads}"
-        self.num_heads = num_heads 
+        self.num_heads = num_heads
         self.num_kv_heads = num_kv_heads
         self.num_repeat = num_heads // num_kv_heads
-        self.head_dim = hidden_size // num_heads 
+        self.head_dim = hidden_size // num_heads
         self.atten_dropout = atten_dropout
 
         kv_hidden_size = self.head_dim * self.num_kv_heads
@@ -71,7 +71,7 @@ class GroupQueryFlashAttention(nn.Module):
             self.correction = ConditionedNorm(1, input_size, cond_norm_hidden_size)
         else:
             self.correction = None
-            
+
         if positional_embedding == "rope":
             self.rotary_emb = RotaryEmbedding(dim=self.head_dim)
 
@@ -85,10 +85,10 @@ class GroupQueryFlashAttention(nn.Module):
         -------
         torch.Tensor, shape (..., seq_len, input_size)
         """
-        
+
         if self.correction is not None:
             x = self.correction(c=condition, x=x)
-        
+
         q = self.q_proj(x)
         k = self.k_proj(x)
         v = self.v_proj(x)
@@ -104,6 +104,7 @@ class GroupQueryFlashAttention(nn.Module):
             v = v.repeat_interleave(self.num_repeat, dim=1)
 
         if relative_positions is not None:
+            # TODO: This is the point where we might have to add rope based on continoous relative coordinates
             q = self.rotary_emb.rotate_queries_or_keys(q)
             k = self.rotary_emb.rotate_queries_or_keys(k)
 
@@ -115,7 +116,7 @@ class GroupQueryFlashAttention(nn.Module):
 
         x = x.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
         x = self.o_proj(x)
-        
+
         return x
 
     @classmethod
@@ -132,9 +133,9 @@ class GroupQueryFlashAttention(nn.Module):
 ############
 class FFN(nn.Module):
     def __init__(self,
-                input_size: int, 
+                input_size: int,
                 ffn_hidden_size: int,  # Directly specify FFN hidden size
-                use_conditional_norm: bool = False, 
+                use_conditional_norm: bool = False,
                 cond_norm_hidden_size: int = 4
                 ):
         super().__init__()
@@ -175,36 +176,36 @@ class RMSNorm(torch.nn.Module):
 # Transformer Block
 ############
 class TransformerBlock(nn.Module):
-    def __init__(self, 
-                input_size: int, 
+    def __init__(self,
+                input_size: int,
                 config: TransformerConfig,
                 skip_connection: bool = False
                 ):
         super().__init__()
         hidden_size = config.hidden_size
         ffn_hidden_size = hidden_size * config.ffn_multiplier
-        
+
         self.attn = GroupQueryFlashAttention.from_config(
-            input_size=input_size, 
+            input_size=input_size,
             hidden_size=hidden_size,
             config=config.attn_config,
             positional_embedding=config.positional_embedding
         )
-        
+
         self.ffn = FFN(
-            input_size=input_size, 
+            input_size=input_size,
             ffn_hidden_size=ffn_hidden_size,
             use_conditional_norm=config.attn_config.use_conditional_norm,
             cond_norm_hidden_size=config.attn_config.cond_norm_hidden_size
         )
 
-        self.attn_norm = RMSNorm(input_size, eps=config.norm_eps) if config.use_attn_norm else None 
-        self.ffn_norm = RMSNorm(input_size, eps=config.norm_eps) if config.use_ffn_norm else None 
+        self.attn_norm = RMSNorm(input_size, eps=config.norm_eps) if config.use_attn_norm else None
+        self.ffn_norm = RMSNorm(input_size, eps=config.norm_eps) if config.use_ffn_norm else None
 
         self.skip_connection = skip_connection
         if self.skip_connection:
             self.skip_proj = nn.Linear(input_size * 2, input_size)
-            
+
     def forward(
         self,
         x: torch.Tensor,
@@ -225,7 +226,7 @@ class TransformerBlock(nn.Module):
         if self.skip_connection and skip is not None:
             x = torch.cat([x, skip], dim=-1)
             x = self.skip_proj(x)
-        
+
         h = x if self.attn_norm is None else self.attn_norm(x)
         h = x + self.attn(h, condition=condition, relative_positions=relative_positions)
         h = h if self.ffn_norm is None else self.ffn_norm(h)
@@ -236,9 +237,9 @@ class TransformerBlock(nn.Module):
 # Transformer
 ############
 class Transformer(nn.Module):
-    def __init__(self, 
-                input_size: int, 
-                output_size: int, 
+    def __init__(self,
+                input_size: int,
+                output_size: int,
                 config: TransformerConfig = TransformerConfig()
                 ):
         super().__init__()
@@ -288,12 +289,12 @@ class Transformer(nn.Module):
         ])
 
     def forward(self, x: torch.Tensor, condition: Optional[float] = None, relative_positions: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """ 
+        """
         Parameters
         ----------
-        x: torch.Tensor 
+        x: torch.Tensor
             [..., seq_len, input_size]
-        
+
         Returns
         -------
         torch.Tensor
@@ -301,17 +302,17 @@ class Transformer(nn.Module):
         """
         x = self.input_proj(x)
         skips = []
-        
+
         for layer in self.encoder_layers:
             x = layer(x, condition=condition, relative_positions=relative_positions)
             skips.append(x)
 
         if self.middle_layer is not None:
             x = self.middle_layer(x, condition=condition, relative_positions=relative_positions)
-    
+
         for layer in self.decoder_layers:
             skip = skips.pop() if self.use_long_range_skip else None
             x = layer(x, condition=condition, relative_positions=relative_positions, skip=skip)
-        
+
         x = self.output_proj(x)
         return x

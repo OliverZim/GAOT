@@ -94,7 +94,10 @@ class GAOT(nn.Module):
         )
 
         self.positional_embedding_name = config.positional_embedding
-        self.positions = self._get_patch_positions()
+
+        # precompute the positions of the patches, if patching is used
+        if self.patch_size > 1:
+            self.patch_positions = self._get_patch_positions()
 
         return Transformer(
             input_size=node_latent_size * patch_volume,
@@ -178,7 +181,66 @@ class GAOT(nn.Module):
 
         return encoded
 
-    def process(
+    def _process_without_patching(
+        self, rndata: torch.Tensor, latent_tokens_coord : torch.Tensor, condition: Optional[float] = None
+    ) -> torch.Tensor:
+        """
+        Process regional node data through Vision Transformer.
+
+        Parameters
+        ----------
+        rndata : torch.Tensor
+            Regional node data of shape [..., n_regional_nodes, node_latent_size]
+        condition : Optional[float]
+            The condition of the model
+
+        Returns
+        -------
+        torch.Tensor
+            Processed regional node data of same shape
+        """
+        # Apply patch linear transformation
+        # I do not think this kind of preprocessing is needed anymore rndata = self.patch_linear(rndata)
+        pos = latent_tokens_coord.to(rndata.device)
+
+        # Apply positional encoding
+        if self.positional_embedding_name in ["absolute", "learnable"]:
+            pos_emb = (
+                self._compute_absolute_embeddings(
+                    pos, self.node_latent_size
+                )
+                if self.positional_embedding_name == "absolute"
+                else self._compute_learnable_absolute_embeddings(
+                    pos, self.node_latent_size
+                )
+            )
+            rndata = rndata + pos_emb
+            relative_positions = None
+        elif self.positional_embedding_name == "rope":
+            relative_positions = pos
+        elif self.positional_embedding_name == "continuous_rope":
+            # TODO: implement continouus rope positional embeddings
+            raise NotImplementedError(
+                "Continuous relative positional embeddings not implemented yet."
+            )
+        elif self.positional_embedding_name == "relative_bias":
+            # TODO: implement relative bias embeddings
+            raise NotImplementedError(
+                "Continuous relative bias embeddings not implemented yet."
+            )
+        else:
+            raise ValueError(
+                f"Unknown positional embedding type: {self.positional_embedding_name}"
+            )
+
+        # Apply transformer processor
+        rndata = self.processor.forward(
+            rndata, condition=condition, relative_positions=relative_positions
+        )
+
+        return rndata
+
+    def _process_with_patching(
         self, rndata: Optional[torch.Tensor] = None, condition: Optional[float] = None
     ) -> torch.Tensor:
         """
@@ -250,7 +312,7 @@ class GAOT(nn.Module):
 
         # Apply patch linear transformation
         rndata = self.patch_linear(rndata)
-        pos = self.positions.to(rndata.device)
+        pos = self.patch_positions.to(rndata.device)
 
         # Apply positional encoding
         if self.positional_embedding_name in ["absolute", "learnable"]:
@@ -268,10 +330,15 @@ class GAOT(nn.Module):
             relative_positions = None
         elif self.positional_embedding_name == "rope":
             relative_positions = pos
-        elif self.positional_embedding_name == "continuous_relative":
-            # TODO: implement applying continuous relative positional embeddings
+        elif self.positional_embedding_name == "continuous_rope":
+            # TODO: implement continouus rope positional embeddings
             raise NotImplementedError(
                 "Continuous relative positional embeddings not implemented yet."
+            )
+        elif self.positional_embedding_name == "relative_bias":
+            # TODO: implement relative bias embeddings
+            raise NotImplementedError(
+                "Continuous relative bias embeddings not implemented yet."
             )
         else:
             raise ValueError(
@@ -296,6 +363,29 @@ class GAOT(nn.Module):
             rndata = rndata.view(batch_size, H * W * D, C)
 
         return rndata
+
+    def process(
+        self, rndata: Optional[torch.Tensor] = None, latent_tokens_coord: Optional[torch.Tensor] = None, condition: Optional[float] = None
+    ) -> torch.Tensor:
+        """
+        Process regional node data through Vision Transformer.
+
+        Parameters
+        ----------
+        rndata : torch.Tensor
+            Regional node data of shape [..., n_regional_nodes, node_latent_size]
+        condition : Optional[float]
+            The condition of the model
+
+        Returns
+        -------
+        torch.Tensor
+            Processed regional node data of same shape
+        """
+        if self.patch_size == 1:
+            return self._process_without_patching(rndata, latent_tokens_coord, condition)
+        else:
+            return self._process_with_patching(rndata, condition)
 
     def decode(
         self,
@@ -359,8 +449,8 @@ class GAOT(nn.Module):
             encoder_nbrs=encoder_nbrs,
         )
 
-        # Process: Apply Vision Transformer on regional nodes
-        rndata = self.process(rndata=rndata, condition=condition)
+        # Process: Apply (Vision) Transformer on regional nodes
+        rndata = self.process(rndata=rndata, latent_tokens_coord=latent_tokens_coord, condition=condition)
 
         # Decode: Map regional nodes back to query nodes
         if query_coord is None:
