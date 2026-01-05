@@ -216,18 +216,8 @@ class GAOT(nn.Module):
             )
             rndata = rndata + pos_emb
             relative_positions = None
-        elif self.positional_embedding_name == "rope":
+        elif self.positional_embedding_name in ["rope", "continuous_rope", "relative_bias"]:
             relative_positions = pos
-        elif self.positional_embedding_name == "continuous_rope":
-            # TODO: implement continouus rope positional embeddings
-            raise NotImplementedError(
-                "Continuous relative positional embeddings not implemented yet."
-            )
-        elif self.positional_embedding_name == "relative_bias":
-            # TODO: implement relative bias embeddings
-            raise NotImplementedError(
-                "Continuous relative bias embeddings not implemented yet."
-            )
         else:
             raise ValueError(
                 f"Unknown positional embedding type: {self.positional_embedding_name}"
@@ -328,18 +318,8 @@ class GAOT(nn.Module):
             )
             rndata = rndata + pos_emb
             relative_positions = None
-        elif self.positional_embedding_name == "rope":
+        elif self.positional_embedding_name in ["rope", "continuous_rope", "relative_bias"]:
             relative_positions = pos
-        elif self.positional_embedding_name == "continuous_rope":
-            # TODO: implement continouus rope positional embeddings
-            raise NotImplementedError(
-                "Continuous relative positional embeddings not implemented yet."
-            )
-        elif self.positional_embedding_name == "relative_bias":
-            # TODO: implement relative bias embeddings
-            raise NotImplementedError(
-                "Continuous relative bias embeddings not implemented yet."
-            )
         else:
             raise ValueError(
                 f"Unknown positional embedding type: {self.positional_embedding_name}"
