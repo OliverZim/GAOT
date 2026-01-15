@@ -11,7 +11,7 @@ This module is a flexible implementation that can handle:
 
 import torch
 import torch.nn as nn
-from typing import List, Optional, Literal, Union
+from typing import List, Optional, Literal, Union, Any
 from dataclasses import dataclass, field
 
 from .mlp import ChannelMLP
@@ -30,10 +30,10 @@ class MAGNOConfig:
 
     # --- Core Parameters ---
     coord_dim: int = 2  # Coordinate dimension (2 for 2D, 3 for 3D)
-    radius_encoder: float | torch.Tensor = (
+    radius_encoder: Any = (
         0.033  # Radius for neighbor search in the encoder module
     )
-    radius_decoder: float | torch.Tensor = (
+    radius_decoder: Any = (
         0.033  # Radius for neighbor search in the decoder module
     )
     hidden_size: int = 64  # Base hidden size for all MLPs
