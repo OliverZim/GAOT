@@ -60,7 +60,7 @@ class MAGNOConfig:
     sampling_strategy: Optional[str] = (
         None  # Edge sampling strategy, support ['max_neighbors', 'ratio']
     )
-    max_neighbors: Optional[int] = None  # Max neighbors for sampling
+    max_neighbors: Optional[int] = None  # Max neighbors for sampling # TODO: This might have to be two values, one for encoder and one for decoder
     sample_ratio: Optional[float] = None  # Sample ratio for edge drop
 
     # --- Advanced ---
@@ -92,19 +92,6 @@ class MAGNOConfig:
         ):
             raise ValueError(
                 "max_neighbors must be > 0 when using 'max_neighbors' sampling"
-            )
-        if (
-            isinstance(self.radius_encoder, torch.Tensor)
-            and self.neighbor_search_method_encoder != "native"
-        ) or (
-            isinstance(self.radius_decoder, torch.Tensor)
-            and self.neighbor_search_method_decoder != "native"
-        ):
-            raise ValueError(
-                "Custom radius tensors can only be used by the 'native' neighbor"
-                "search method. Currently the neighbor search method for the "
-                "encoder is {self.neighbor_search_method_encoder} and for the "
-                "decoder is {self.neighbor_search_method_decoder}."
             )
 
 

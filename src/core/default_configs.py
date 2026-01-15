@@ -29,7 +29,7 @@ class SetUpConfig:
     train: bool = True                                          # Whether to run training phase
     test: bool = False                                          # Whether to run testing phase
     ckpt: bool = False                                          # Whether to load/save checkpoints
-    
+
     # Distributed training parameters
     distributed: bool = False                                   # Enable distributed training
     world_size: int = 1                                         # Total number of processes
@@ -50,7 +50,8 @@ class ModelConfig:
     """Model configuration."""
     name: str = "gaot"                                             # Model name: "gaot"
     use_conditional_norm: bool = False                             # Time-conditional normalization
-    latent_tokens_size: Tuple[int, int] = (64, 64)                 # Latent token dimensions (H,W) or (H,W,D)
+    latent_tokens_size: Tuple[int, ...] = (64, 64)                 # Latent token dimensions (num), (H,W) or (H,W,D)
+    latent_tokens_method: str = "regular"                           # Method to generate latent queries: ["regular", "random"]
     args: ModelArgsConfig = field(default_factory=ModelArgsConfig) # Model component configurations
 
 
@@ -71,7 +72,7 @@ class DatasetConfig:
     sample_rate: float = 0.1                                    # Sample rate for point clouds
     use_sparse: bool = False                                    # Use sparse representations (PDEGym datasets)
     rand_dataset: bool = False                                  # Randomize dataset sequence
-    
+
     # Time-dependent dataset parameters
     max_time_diff: int = 14                                     # Maximum time difference for pairs
     time_step: int = 2                                          # Time step for sequence data

@@ -38,22 +38,29 @@ class GAOT(nn.Module):
 
         # Get latent token dimensions
         latent_tokens_size = config.latent_tokens_size
-        if coord_dim == 2:
-            if len(latent_tokens_size) != 2:
+        latent_token_method = config.latent_tokens_method
+        if latent_token_method == "random":
+            if len(latent_tokens_size) != 1:
                 raise ValueError(
-                    f"For 2D, latent_tokens_size must have 2 dimensions, got {len(latent_tokens_size)}"
+                    f"For 'random' latent token method, latent_tokens_size must be a single integer in a list, got {latent_tokens_size}"
                 )
-            self.H = latent_tokens_size[0]
-            self.W = latent_tokens_size[1]
-            self.D = None
-        else:  # 3D
-            if len(latent_tokens_size) != 3:
-                raise ValueError(
-                    f"For 3D, latent_tokens_size must have 3 dimensions, got {len(latent_tokens_size)}"
-                )
-            self.H = latent_tokens_size[0]
-            self.W = latent_tokens_size[1]
-            self.D = latent_tokens_size[2]
+        else:
+            if coord_dim == 2:
+                if len(latent_tokens_size) != 2:
+                    raise ValueError(
+                        f"For 2D, latent_tokens_size must have 2 dimensions, got {len(latent_tokens_size)}"
+                    )
+                self.H = latent_tokens_size[0]
+                self.W = latent_tokens_size[1]
+                self.D = None
+            else:  # 3D
+                if len(latent_tokens_size) != 3:
+                    raise ValueError(
+                        f"For 3D, latent_tokens_size must have 3 dimensions, got {len(latent_tokens_size)}"
+                    )
+                self.H = latent_tokens_size[0]
+                self.W = latent_tokens_size[1]
+                self.D = latent_tokens_size[2]
 
         # Initialize encoder, processor, and decoder
         self.encoder = self.init_encoder(
