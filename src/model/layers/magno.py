@@ -30,12 +30,8 @@ class MAGNOConfig:
 
     # --- Core Parameters ---
     coord_dim: int = 2  # Coordinate dimension (2 for 2D, 3 for 3D)
-    radius_encoder: Any = (
-        0.033  # Radius for neighbor search in the encoder module
-    )
-    radius_decoder: Any = (
-        0.033  # Radius for neighbor search in the decoder module
-    )
+    radius_encoder: Any = 0.033  # Radius for neighbor search in the encoder module
+    radius_decoder: Any = 0.033  # Radius for neighbor search in the decoder module
     hidden_size: int = 64  # Base hidden size for all MLPs
     mlp_layers: int = 3  # Number of MLP layers (consistent across all MLPs)
     lifting_channels: int = 32  # Number of channels after Encoder
@@ -57,11 +53,24 @@ class MAGNOConfig:
 
     # --- Transform and Sampling ---
     transform_type: str = "linear"  # Transform type for both encoder and decoder, support ['linear', 'nonlinear']
-    sampling_strategy: Optional[str] = (
+    sampling_strategy_encoder: Optional[str] = (
         None  # Edge sampling strategy, support ['max_neighbors', 'ratio']
     )
-    max_neighbors: Optional[int] = None  # Max neighbors for sampling # TODO: This might have to be two values, one for encoder and one for decoder
-    sample_ratio: Optional[float] = None  # Sample ratio for edge drop
+    sampling_strategy_decoder: Optional[str] = (
+        None  # Edge sampling strategy, support ['max_neighbors', 'ratio']
+    )
+    max_neighbors_encoder: Optional[int] = (
+        None  # Max neighbors for sampling in the encoder
+    )
+    max_neighbors_decoder: Optional[int] = (
+        None  # Max neighbors for sampling in the decoder
+    )
+    sample_ratio_encoder: Optional[float] = (
+        None  # Sample ratio for edge drop in the encoder
+    )
+    sample_ratio_decoder: Optional[float] = (
+        None  # Sample ratio for edge drop in the decoder
+    )
 
     # --- Advanced ---
     node_embedding: bool = False  # Use positional node embedding
@@ -81,14 +90,26 @@ class MAGNOConfig:
         """Validate configuration parameters"""
         if self.coord_dim not in [2, 3]:
             raise ValueError(f"coord_dim must be 2 or 3, got {self.coord_dim}")
-        if self.sampling_strategy == "ratio" and (
-            self.sample_ratio is None or not 0 < self.sample_ratio <= 1
+        if self.sampling_strategy_encoder == "ratio" and (
+            self.sample_ratio_encoder is None or not 0 < self.sample_ratio_encoder <= 1
         ):
             raise ValueError(
                 "sample_ratio must be in (0, 1] when using 'ratio' sampling"
             )
-        if self.sampling_strategy == "max_neighbors" and (
-            self.max_neighbors is None or self.max_neighbors <= 0
+        if self.sampling_strategy_encoder == "max_neighbors" and (
+            self.max_neighbors_encoder is None or self.max_neighbors_encoder <= 0
+        ):
+            raise ValueError(
+                "max_neighbors must be > 0 when using 'max_neighbors' sampling"
+            )
+        if self.sampling_strategy_decoder == "ratio" and (
+            self.sample_ratio_decoder is None or not 0 < self.sample_ratio_decoder <= 1
+        ):
+            raise ValueError(
+                "sample_ratio must be in (0, 1] when using 'ratio' sampling"
+            )
+        if self.sampling_strategy_decoder == "max_neighbors" and (
+            self.max_neighbors_decoder is None or self.max_neighbors_decoder <= 0
         ):
             raise ValueError(
                 "max_neighbors must be > 0 when using 'max_neighbors' sampling"
@@ -128,9 +149,9 @@ class MAGNOEncoder(nn.Module):
         self.neighbor_cache = {}  # Unified caching for both fx and vx modes
 
         # --- Store edge drop parameters ---
-        self.sampling_strategy = config.sampling_strategy
-        self.max_neighbors = config.max_neighbors
-        self.sample_ratio = config.sample_ratio
+        self.sampling_strategy = config.sampling_strategy_encoder
+        self.max_neighbors = config.max_neighbors_encoder
+        self.sample_ratio = config.sample_ratio_encoder
 
         # --- Determine kernel input dimension ---
         kernel_coord_dim = self._compute_kernel_coord_dim()
@@ -489,9 +510,9 @@ class MAGNODecoder(nn.Module):
         self.neighbor_cache = {}
 
         # --- Store edge drop parameters ---
-        self.sampling_strategy = config.sampling_strategy
-        self.max_neighbors = config.max_neighbors
-        self.sample_ratio = config.sample_ratio
+        self.sampling_strategy = config.sampling_strategy_decoder
+        self.max_neighbors = config.max_neighbors_decoder
+        self.sample_ratio = config.sample_ratio_decoder
 
         # --- Determine kernel input dimension ---
         kernel_coord_dim = self._compute_kernel_coord_dim()
@@ -830,5 +851,3 @@ class MAGNODecoder(nn.Module):
             decoded_scales.append(decoded_scale)
 
         return decoded_scales
-
-
