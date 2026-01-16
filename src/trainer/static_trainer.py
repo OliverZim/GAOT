@@ -47,12 +47,14 @@ class StaticTrainer(BaseTrainer):
         )
 
         data_splits, is_variable_coords = self.data_processor.load_and_process_data()
+        self.data_splits = data_splits
 
         self.coord_mode = "vx" if is_variable_coords else "fx"
         print(f"Detected coordinate mode: {self.coord_mode}")
 
         latent_queries = self.data_processor.generate_latent_queries(
-            self.model_config.latent_tokens_size, method=self.model_config.latent_tokens_method
+            self.model_config.latent_tokens_size,
+            method=self.model_config.latent_tokens_method,
         )
         self.latent_tokens_coord = latent_queries
 
@@ -142,7 +144,6 @@ class StaticTrainer(BaseTrainer):
     def _init_fixed_coords_mode(self, data_splits):
         """Initialize for fixed coordinates mode."""
         print("Setting up fixed coordinates mode...")
-
         # Store fixed coordinates
         self.coord = self.data_processor.coord_scaler(data_splits["train"]["x"])
 
@@ -154,6 +155,20 @@ class StaticTrainer(BaseTrainer):
         self.train_loader = loaders["train"]
         self.val_loader = loaders["val"]
         self.test_loader = loaders["test"]
+
+    def update_graphs_and_loaders(self):
+        assert self.data_processor is not None, "Data processor not initialized."
+        latent_queries = self.data_processor.generate_latent_queries(
+            self.model_config.latent_tokens_size,
+            method=self.model_config.latent_tokens_method,
+        )
+        self.latent_tokens_coord = latent_queries
+        if self.coord_mode == "vx":
+            print("Rebuilding graphs and data loaders for variable coordinates mode...")
+            self._init_variable_coords_mode(self.data_splits)
+        else:
+            print("Rebuilding data loaders for fixed coordinates mode...")
+            self._init_fixed_coords_mode(self.data_splits)
 
     def init_model(self, model_config):
         """Initialize the GAOT model."""
