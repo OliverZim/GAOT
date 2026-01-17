@@ -16,8 +16,8 @@ from ..utils.plotting import plot_estimates
 
 class StaticTrainer(BaseTrainer):
     """
-    Unified trainer for static (time-independent) problems.
-    Automatically handles both fixed and variable coordinate modes.
+    Unified trainer for static (time-independent) problems. Automatically handles both
+    fixed and variable coordinate modes.
     """
 
     def __init__(self, config):
@@ -188,9 +188,10 @@ class StaticTrainer(BaseTrainer):
     def train_step(self, batch):
         """Perform one training step."""
         if self.coord_mode == "fx":
-            return self._train_step_fixed_coords(batch)
+            loss = self._train_step_fixed_coords(batch)
         else:
-            return self._train_step_variable_coords(batch)
+            loss = self._train_step_variable_coords(batch)
+        return loss
 
     def _train_step_fixed_coords(self, batch):
         """Training step for fixed coordinates mode."""
@@ -420,3 +421,89 @@ class StaticTrainer(BaseTrainer):
         coord_for_plot = coord_sample[-1] if coord_sample.dim() > 2 else coord_sample
 
         return pred, y_sample, x_sample, coord_for_plot
+
+    def uncertainty_estimation(self):
+        """Only works when the latent tokens are sampled randomly.
+        Makes multiple predictions for the same input, always with newly sampled latent
+        tokens, and computes the mean and stddev of the predictions. Finally, saves a
+        plot showing the mean prediction and uncertainty estimation."""
+
+        print("Starting uncertainty estimation...")
+
+        self.model.eval()
+        self.model.to(self.device)
+
+        all_preds_denorm = []
+
+        num_samples = self.setup_config.uncertainty_samples
+        for _ in range(num_samples):
+            with torch.no_grad():
+                batch = next(
+                    iter(self.test_loader)
+                )  # as shuffle = False for the test loader, this always gives the same input batch but with different latent tokens and graphs
+
+                if self.coord_mode == "fx":
+                    pred, y, x, coord_used = self._test_step_fixed_coords(batch)
+                else:
+                    pred, y, x, coord_used = self._test_step_variable_coords(batch)
+
+                pred = pred[0]
+                gtr_sample = y[0]
+                x_sample = x[0] if x is not None else None
+
+                pred_denorm = denormalize_data(
+                    pred,
+                    self.data_processor.u_mean.to(self.device),
+                    self.data_processor.u_std.to(self.device),
+                )
+                all_preds_denorm.append(pred_denorm.unsqueeze(0))
+
+                self.update_graphs_and_loaders()
+
+        all_preds_denorm = torch.cat(all_preds_denorm, dim=0)
+        pred_denorm_mean = torch.mean(all_preds_denorm, dim=0)
+        pred_denorm_std = torch.std(all_preds_denorm, dim=0)
+
+        if x_sample is not None and self.data_processor.c_mean is not None:
+            x_sample_denorm = denormalize_data(
+                x_sample,
+                self.data_processor.c_mean.to(self.device),
+                self.data_processor.c_std.to(self.device),
+            )
+        else:
+            x_sample_denorm = x_sample
+
+        if gtr_sample is not None and self.data_processor.u_mean is not None:
+            gtr_sample_denorm = denormalize_data(
+                gtr_sample,
+                self.data_processor.u_mean.to(self.device),
+                self.data_processor.u_std.to(self.device),
+            )
+        else:
+            gtr_sample_denorm = gtr_sample
+
+        original_coords = self.data_processor.coord_scaler.inverse_transform(
+            coord_used.cpu()
+        )
+        coord_plot = original_coords.numpy()
+
+        fig = plot_estimates(
+            u_inp=x_sample_denorm.cpu().numpy()
+            if x_sample_denorm is not None
+            else None,
+            u_gtr=gtr_sample_denorm.cpu().numpy() if gtr_sample is not None else None,
+            u_prd=pred_denorm_mean.cpu().numpy(),
+            u_std=pred_denorm_std.cpu().numpy(),
+            x_inp=coord_plot,
+            x_out=coord_plot,
+            names=self.metadata.names.get("c", ["input"])
+            if x_sample_denorm is not None
+            else None,
+            symmetric=self.metadata.signed["u"],
+            domain=self.metadata.domain_x,
+        )
+
+        fig.savefig(
+            self.path_config.result_path, dpi=300, bbox_inches="tight", pad_inches=0.1
+        )
+        print(f"Uncertainty plot saved to {self.path_config.result_path}")
