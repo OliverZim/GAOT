@@ -328,7 +328,7 @@ class AdamWOptimizer:
                 train_loss.backward()
                 self.optimizer.step()
 
-                total_loss += train_loss.detach()
+                total_loss += train_loss.cpu().item()
                 # if trainer.device.type == 'cuda':
                 #     torch.cuda.synchronize()
                 # time_total += time.time() - start_time
@@ -339,7 +339,7 @@ class AdamWOptimizer:
             pbar.update(1)
 
             if (epoch + 1) % self.eval_every_eps == 0:
-                train_loss = total_loss.cpu().item() / len(trainer.train_loader)
+                train_loss = total_loss / len(trainer.train_loader)
                 losses.append(train_loss)
                 epochs.append(epoch)
                 val_loss = trainer.validate(trainer.val_loader)
