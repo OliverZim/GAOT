@@ -5,7 +5,7 @@ import os
 import time
 import argparse
 
-import toml 
+import toml
 import json
 from omegaconf import OmegaConf
 from multiprocessing import Pool,Process
@@ -26,7 +26,7 @@ class FileParser:
                 self.kwargs = OmegaConf.load(f)
         else:
             raise NotImplementedError(f"File type {filename} not supported, currently only toml and json are supported.")
-        
+
     def add_argument(self, *args, **kwargs):
 
         for arg in args:
@@ -37,7 +37,7 @@ class FileParser:
                     self.kwargs[arg] = False
                 else:
                     self.kwargs[arg] = kwargs.get("default", None)
-   
+
     def parse_args(self):
         return argparse.Namespace(**self.kwargs)
 
@@ -77,7 +77,7 @@ def prepare_arg(arg):
         # make sure the path directory exist
         if not os.path.exists(_dirpath):
             os.makedirs(_dirpath)
-        # turn the relative path to abs path 
+        # turn the relative path to abs path
         arg.path[_path] = _abspath
     arg.datarow = vars(arg).copy()
     arg.datarow['nbytes'] = -1
@@ -91,15 +91,15 @@ def prepare_arg(arg):
     arg.datarow['relative error (direct)'] = np.nan
     arg.datarow['relative error (auto2)'] = np.nan
     arg.datarow['relative error (auto4)'] = np.nan
-    
+
     return arg
 
 def run_arg(arg):
     arg = prepare_arg(arg)
 
     Trainer = {
-        "static": StaticTrainer,  
-        "sequential": SequentialTrainer,  
+        "static": StaticTrainer,
+        "sequential": SequentialTrainer,
     }[arg.setup["trainer_name"]]
     t = Trainer(arg)
     if arg.setup["train"]:
@@ -109,6 +109,9 @@ def run_arg(arg):
     if arg.setup["test"]:
         t.load_ckpt()
         t.test()
+    if arg.setup["uncertainty"]:
+        t.load_ckpt()
+        t.uncertainty_estimation()
 
     if getattr(arg.setup, "rank", 0) == 0:
         if os.path.exists(arg.path["database_path"]):
@@ -159,7 +162,7 @@ def run_arg_files(arg_files, is_debug, num_works_per_device=3):
                 processes[f"cuda:{device_id}"].append(p)
             else:
                 processes["cpu"].append(p)
-        
+
         max_jobs = max([len(v) for k,v in processes.items()])
         max_runs = (max_jobs + num_works_per_device - 1)  // num_works_per_device
         for i in range(max_runs):
