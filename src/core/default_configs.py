@@ -31,6 +31,8 @@ class SetUpConfig:
     train: bool = True  # Whether to run training phase
     test: bool = False  # Whether to run testing phase
     ckpt: bool = False  # Whether to load/save checkpoints
+    uncertainty: bool = False  # Whether to perform uncertainty estimation
+    uncertainty_samples: int = 10  # Number of samples for uncertainty estimation
 
     # Distributed training parameters
     distributed: bool = False  # Enable distributed training
