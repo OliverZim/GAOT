@@ -113,8 +113,10 @@ class NeighborSearch(nn.Module):
             return _grid_neighbor_search(data, queries, radius, grid_size)
         elif self.method == "chunked":
             return _chunked_neighbor_search(data, queries, radius, self.chunk_size)
-        elif self.method == "adaptive":
-            return _adaptive_neighbor_search(data, queries, radius)
+        elif self.method == "adaptive_delaunay":
+            return _adaptive_neighbor_search_delaunay(data, queries, radius)
+        elif self.method == "adaptive_knn":
+            return _adaptive_neighbor_search_knn(data, queries, radius)
         else:  # native
             return _native_neighbor_search(data, queries, radius)
 
@@ -380,10 +382,8 @@ def _chunked_neighbor_search(
     }
 
 
-def _adaptive_neighbor_search(
-    data: torch.Tensor,
-    queries: torch.Tensor,
-    radius_scale: float = 1.0
+def _adaptive_neighbor_search_delaunay(
+    data: torch.Tensor, queries: torch.Tensor, radius_scale: float = 1.0
 ):
     """
     Computes an adaptive radius for each query point using Delaunay triangulation
@@ -403,7 +403,7 @@ def _adaptive_neighbor_search(
     # 3. Aggregate the maximum median for each node
     # Each simplex has 3 nodes. We map each median to its corresponding node.
     node_indices = tri.simplices.flatten()  # (N_simplices * 3,)
-    median_values = medians.flatten()       # (N_simplices * 3,)
+    median_values = medians.flatten()  # (N_simplices * 3,)
 
     # Use torch.scatter_reduce for a clean, fast "groupby-max" operation
     # (Available in Torch 1.12+)
@@ -422,6 +422,7 @@ def _adaptive_neighbor_search(
     # 5. Perform native neighbor search with computed radii
     return _native_neighbor_search(data, queries, radii)
 
+
 def _compute_triangulation_medians(tri: Delaunay) -> np.ndarray:
     """
     Vectorized calculation of triangle medians using Apollonius's Theorem.
@@ -434,14 +435,33 @@ def _compute_triangulation_medians(tri: Delaunay) -> np.ndarray:
 
     # Calculate squared lengths of sides opposite to vertices A, B, and C
     # a^2 is side BC, b^2 is side AC, c^2 is side AB
-    a2 = np.sum((B - C)**2, axis=1)
-    b2 = np.sum((A - C)**2, axis=1)
-    c2 = np.sum((A - B)**2, axis=1)
+    a2 = np.sum((B - C) ** 2, axis=1)
+    b2 = np.sum((A - C) ** 2, axis=1)
+    c2 = np.sum((A - B) ** 2, axis=1)
 
     # Apollonius's Theorem: median_a = 0.5 * sqrt(2b^2 + 2c^2 - a^2)
     # The factor 0.67 (approx 2/3) is applied here as per the RIGNO method.
-    m_a = 0.67 * 0.5 * np.sqrt(np.maximum(2*b2 + 2*c2 - a2, 0))
-    m_b = 0.67 * 0.5 * np.sqrt(np.maximum(2*a2 + 2*c2 - b2, 0))
-    m_c = 0.67 * 0.5 * np.sqrt(np.maximum(2*a2 + 2*b2 - c2, 0))
+    m_a = 0.67 * 0.5 * np.sqrt(np.maximum(2 * b2 + 2 * c2 - a2, 0))
+    m_b = 0.67 * 0.5 * np.sqrt(np.maximum(2 * a2 + 2 * c2 - b2, 0))
+    m_c = 0.67 * 0.5 * np.sqrt(np.maximum(2 * a2 + 2 * b2 - c2, 0))
 
     return np.stack([m_a, m_b, m_c], axis=1)
+
+
+def _adaptive_neighbor_search_knn(
+    data: torch.Tensor, queries: torch.Tensor, k
+):
+
+    # Compute pairwise distance matrix
+    try:
+        k = int(k)
+    except ValueError as e:
+        raise e
+
+    dist_matrix = torch.cdist(queries, data, p=2)
+
+    # Get the distance to the k-th neighbor
+    values, indices = torch.topk(dist_matrix, k + 1, dim=1, largest=False)
+    radii = values[:, -1]
+    
+    return _native_neighbor_search(data, queries, radii)
