@@ -74,10 +74,9 @@ class GAOT(nn.Module):
         )
 
         # define the embedding MLP for learnable absolute positional embeddings
-        # TODO: make this MLP also configurable
         if config.args.transformer.positional_embedding == "learnable":
             self.positional_embedding_mlp = AugmentedMLP(
-                input_size=2,
+                input_size=config.args.magno.coord_dim,
                 output_size=config.args.magno.lifting_channels,
                 hidden_size=2 * config.args.magno.lifting_channels,
                 num_layers=3,
