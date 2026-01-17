@@ -107,7 +107,7 @@ class SequentialTrainer(BaseTrainer):
 
         # Create graph builder
         neighbor_search_method_encoder = self.model_config.args.magno.neighbor_search_method_encoder
-        neighbor_search_method_decoder = self.model.config.args.magno.neighbor_search_method_decoder
+        neighbor_search_method_decoder = self.model_config.args.magno.neighbor_search_method_decoder
         self.graph_builder = GraphBuilder(neighbor_search_method_encoder=neighbor_search_method_encoder, neighbor_search_method_decoder=neighbor_search_method_decoder)
 
         # Get graph building parameters
