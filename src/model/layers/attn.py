@@ -88,7 +88,7 @@ class RelativeBias(nn.Module):
         # 4. Scale biases per head
         bias = bias * self.head_scaling
 
-        # 5. [B, H, N, N]
+        # 5. [H, N, N]
         bias = bias.permute(2, 0, 1)
 
         return bias
@@ -235,7 +235,6 @@ class GroupQueryFlashAttention(nn.Module):
             v = v.repeat_interleave(self.num_repeat, dim=1)
 
         if relative_positions is not None and self.positional_embedding_type == "rope":
-            # TODO: This is the point where we might have to add rope based on continoous relative coordinates
             q = self.rotary_emb.rotate_queries_or_keys(q)
             k = self.rotary_emb.rotate_queries_or_keys(k)
 
