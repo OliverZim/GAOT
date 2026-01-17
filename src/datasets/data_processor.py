@@ -324,7 +324,6 @@ class DataProcessor:
         token_size: Tuple[int, ...],
         add_extrema: bool = True
     ) -> torch.Tensor:
-        """Generate latent query points on a regular grid."""
         assert len(token_size)==1, "Only 1D token_size is supported for sampling latent queries."
         num_tokens = token_size[0]
         phy_domain = self.metadata.domain_x
